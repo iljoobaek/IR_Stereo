@@ -1,0 +1,5 @@
+# ninja log v5
+0	8012	1592427369819080337	/home/rtml/Asish/GANet/libs/sync_bn/build/temp.linux-x86_64-3.7/src/cpu/sync_bn.o	8ef3158c8d10f655
+0	15529	1592427377335265006	/home/rtml/Asish/GANet/libs/sync_bn/build/temp.linux-x86_64-3.7/src/cpu/operator.o	871886c79d6bb23d
+0	15698	1592427393335657924	/home/rtml/Asish/GANet/libs/sync_bn/build/temp.linux-x86_64-3.7/src/gpu/operator.o	9e45726c1c8aaffb
+0	17728	1592427395363707707	/home/rtml/Asish/GANet/libs/sync_bn/build/temp.linux-x86_64-3.7/src/gpu/sync_bn_cuda.o	d550973a6ebcc0f0
