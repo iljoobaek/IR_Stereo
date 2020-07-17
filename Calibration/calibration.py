@@ -43,8 +43,8 @@ def pre_processing(img):
 
 for fname in images:
     im = cv.imread(fname,1)
-    img = pre_processing(im)
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    #img = pre_processing(im)
+    gray = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
     gray = cv.bitwise_not(gray)
     #cv.imshow('inv', gray)
     
@@ -74,9 +74,9 @@ cv.destroyAllWindows()
 
 
 
-## Calibration
-print("Calibrating...")
-ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
+# ## Calibration
+# print("Calibrating...")
+# ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
 #
 ## Writing camera parameters in file
 #f = open("R-matrix.txt", "w")
@@ -104,10 +104,10 @@ ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.sha
 #cv.imwrite('calibresult.png', dst)
 
 # Re-projection Error
-print("Computing reprojeciton error")
-mean_error = 0
-for i in range(len(objpoints)):
-    imgpoints2, _ = cv.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
-    error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2)/len(imgpoints2)
-    mean_error += error
-print( "total error: {}".format(mean_error/len(objpoints)) )
+# print("Computing reprojeciton error")
+# mean_error = 0
+# for i in range(len(objpoints)):
+#     imgpoints2, _ = cv.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+#     error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2)/len(imgpoints2)
+#     mean_error += error
+# print( "total error: {}".format(mean_error/len(objpoints)) )
