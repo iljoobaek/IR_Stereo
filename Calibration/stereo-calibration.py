@@ -19,6 +19,7 @@ parser.add_argument('--lpath', type=str, default='./calib_selected/IR/IR_L/*.tif
 parser.add_argument('--rpath', type=str, default='./calib_selected/IR/IR_R/*.tiff', help="right data")
 parser.add_argument('--o_path', type=str, default='./calib_selected/IR/', help="output directory")
 parser.add_argument('--IR', type=int, default=1, help="RGB/IR images - set 1 for IR")
+parser.add_argument('--calib', type=int, default=1, help="perform calibration?" )
 parser.add_argument('--viz', type=int, default=0, help="Visualize pattern recognition results" )
 opt = parser.parse_args()
 
@@ -94,8 +95,6 @@ def intrinsic_calib(objpoints, imgpoints, img_shape):
     print("Calibrating...")
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, img_shape,None,None, criteria)
-    # Re-projection Error
-    print("Re-projection Error: ", ret)
     return ret, mtx, dist, rvecs, tvecs
     
 ## Stereo Calibration
@@ -134,11 +133,23 @@ def re_map(maplx, maply, maprx, mapry, lpath, rpath):
         cv.imwrite(op_l_path + a[-1], imgL)
         a = imagesR[i].split("/")
         cv.imwrite(op_r_path + a[-1], imgR)
+    print("Completed!")
  
 if __name__ == '__main__': 
     objpointsL, imgpointsL, img_shape = find_checkerboard(opt.lpath)
-    ret_l, mtx_l, dist_l, rvecs_l, tvecs_l = intrinsic_calib(objpointsL, imgpointsL, img_shape)
     objpointsR, imgpointsR, img_shape = find_checkerboard(opt.rpath)
-    ret_r, mtx_r, dist_r, rvecs_r, tvecs_r = intrinsic_calib(objpointsR, imgpointsR, img_shape)
-    maplx, maply, maprx, mapry = stereo_calib(objpointsL, imgpointsL, objpointsR, imgpointsR ,mtx_l, dist_l, mtx_r, dist_r, img_shape)
-    re_map(maplx, maply, maprx, mapry, opt.lpath, opt.rpath)
+    #include flag check
+    if (opt.calib ==1):
+        ret_l, mtx_l, dist_l, rvecs_l, tvecs_l = intrinsic_calib(objpointsL, imgpointsL, img_shape)
+        # Re-projection Error
+        print("Left Re-projection Error: ", ret_l)
+        ret_r, mtx_r, dist_r, rvecs_r, tvecs_r = intrinsic_calib(objpointsR, imgpointsR, img_shape)
+        # Re-projection Error
+        print("Right Re-projection Error: ", ret_r)
+        maplx, maply, maprx, mapry = stereo_calib(objpointsL, imgpointsL, objpointsR, imgpointsR ,mtx_l, dist_l, mtx_r, dist_r, img_shape)
+        # save files
+        np.save(opt.o_path + "maplx", maplx)
+        np.save(opt.o_path + "maply", maply)
+        np.save(opt.o_path + "maprx", maprx)
+        np.save(opt.o_path + "mapry", mapry)
+        re_map(maplx, maply, maprx, mapry, opt.lpath, opt.rpath)
