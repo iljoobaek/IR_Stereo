@@ -8,7 +8,10 @@
 #include <opencv4/opencv2/highgui.hpp>
 #include <opencv4/opencv2/core/utility.hpp>
 #include <opencv4/opencv2/ximgproc.hpp>
-
+#include <iostream>
+#include <dirent.h>
+#include <sys/types.h>
+#include <string>
 #include <stdio.h>
 
 using namespace cv;
@@ -17,7 +20,7 @@ using namespace cv::ximgproc;
 static void print_help(char** argv)
 {
     printf("\nDemo stereo matching converting L and R images into disparity\n");
-    printf("\nUsage: %s <left_dir> <right_dir> <out_dir> [-n=<num_imgs>] [--algorithm=sgbm|sgbm3way]\n"
+    printf("\nUsage: %s <left_dir> <right_dir> <out_dir> [--algorithm=sgbm|sgbm3way]\n"
            " [--blocksize=<block_size>] [--max-disparity=<max_disparity>] [-m=<remap_filename>] {no-display||}\n", argv[0]);
 }
 
@@ -32,16 +35,18 @@ int main(int argc, char** argv)
     std::string img2_filename = "";
     std::string op_filename = "";
     std::string remap_filename = "";
-
+    std::string str1 ("..");
+    std::string str2 (".");
+    DIR *dr;
+    struct dirent *en;
     enum { STEREO_SGBM=0, STEREO_3WAY=1 };
-    int num_imgs, SADWindowSize, numberOfDisparities, alg = STEREO_SGBM;
+    int SADWindowSize, numberOfDisparities, alg = STEREO_SGBM;
     bool no_display;
     Ptr<StereoSGBM> sgbm = StereoSGBM::create(0,16,3);
     cv::CommandLineParser parser(argc, argv,
-        "{@arg1||}{@arg2||}{@arg3||}{help h||}{n|0|}{algorithm||}{blocksize|0|}{max-disparity|0|}{m||}{no-display||}");
+        "{@arg1||}{@arg2||}{@arg3||}{help h||}{algorithm||}{blocksize|0|}{max-disparity|0|}{m||}{no-display||}");
     numberOfDisparities = parser.get<int>("max-disparity");
     SADWindowSize = parser.get<int>("blocksize");
-    num_imgs = parser.get<int>("n");
     no_display = parser.has("no-display");
 
     if(parser.has("help"))
@@ -104,7 +109,7 @@ int main(int argc, char** argv)
     int sgbmWinSize = SADWindowSize > 0 ? SADWindowSize : 3;
     sgbm->setBlockSize(sgbmWinSize);
     sgbm->setMinDisparity(0);
-    sgbm->setUniquenessRatio(20);
+    sgbm->setUniquenessRatio(15);
     sgbm->setSpeckleWindowSize(100);
     sgbm->setSpeckleRange(32);
     sgbm->setDisp12MaxDiff(1);
@@ -114,83 +119,90 @@ int main(int argc, char** argv)
     else if(alg==STEREO_3WAY)
         sgbm->setMode(StereoSGBM::MODE_SGBM_3WAY);
 
+    dr = opendir(img1_dir.c_str());
+    if (dr) 
+    {
+      while ((en = readdir(dr)) != NULL) 
+      {
+         if (str1.compare(en->d_name) !=0 && str2.compare(en->d_name) !=0)
+            {   
+                std::string img1_filename = img1_dir + en->d_name;
+                std::string img2_filename = img2_dir + en->d_name;
+                std::string op_filename = op_dir + en->d_name;
 
-	for (int i = 1; i <= num_imgs; i++) 
-    {   std::string img1_filename = img1_dir + std::to_string(i) + ".tiff";
-        std::string img2_filename = img2_dir + std::to_string(i) + ".tiff";
-        std::string op_filename = op_dir + std::to_string(i) + ".tiff";
+                Mat img1 = imread(img1_filename, 0);
+                Mat img2 = imread(img2_filename, 0);
+                //bitwise_not(img1,img1);
+                //bitwise_not(img2,img2);
 
-        Mat img1 = imread(img1_filename, 0);
-        Mat img2 = imread(img2_filename, 0);
-        //bitwise_not(img1,img1);
-        //bitwise_not(img2,img2);
+                if (img1.empty())
+                {
+                    printf("Command-line parameter error: could not load the first input image file\n");
+                    return -1;
+                }
+                if (img2.empty())
+                {
+                    printf("Command-line parameter error: could not load the second input image file\n");
+                    return -1;
+                }
 
-        if (img1.empty())
-        {
-            printf("Command-line parameter error: could not load the first input image file\n");
-            return -1;
+                Size img_size = img1.size();
+                numberOfDisparities = numberOfDisparities > 0 ? numberOfDisparities : ((img_size.width/8) + 15) & -16;
+                sgbm->setNumDisparities(numberOfDisparities);
+                int cn = img1.channels();
+                sgbm->setP1(8*cn*sgbmWinSize*sgbmWinSize);
+                sgbm->setP2(32*cn*sgbmWinSize*sgbmWinSize);
+                if( !remap_filename.empty() )
+                {
+
+                Mat img1r, img2r;
+                int64 rect_time = getTickCount();
+                remap(img1, img1r, map11, map12, INTER_LINEAR);
+                remap(img2, img2r, map21, map22, INTER_LINEAR);
+                rect_time = getTickCount() - rect_time;
+                printf("Rectification Time elapsed: %fms\n", rect_time*1000/getTickFrequency());
+                img1 = img1r;
+                img2 = img2r;
+                }
+
+                    
+                Ptr<DisparityWLSFilter> wls_filter;
+                wls_filter = createDisparityWLSFilter(sgbm);
+                Ptr<StereoMatcher> right_matcher = createRightMatcher(sgbm);   
+
+                Mat left_disp, right_disp, filtered_disp, disp8;
+                int64 disp_time = getTickCount();
+
+                sgbm->compute(img1, img2, left_disp);
+                right_matcher->compute(img2, img1, right_disp);
+
+                disp_time = getTickCount() - disp_time;
+                printf("Disparity matching Time elapsed: %fms\n", disp_time*1000/getTickFrequency());
+                
+                wls_filter->setLambda(8000);
+                wls_filter->setSigmaColor(1.5);
+                int64 filtering_time = getTickCount();
+                wls_filter->filter(left_disp,img1,filtered_disp,right_disp);
+                filtering_time = (getTickCount() - filtering_time);
+                printf("Filtering Time elapsed: %fms\n", filtering_time*1000/getTickFrequency());
+                filtered_disp.convertTo(disp8, CV_8U, 255/(numberOfDisparities*16.));
+                imwrite(op_filename, disp8);
+
+                if( !no_display )
+                {
+                    namedWindow("left", 1);
+                    imshow("left", img1);
+                    namedWindow("right", 1);
+                    imshow("right", img2);
+                    namedWindow("disparity", 0);
+                    imshow("disparity", disp8);
+                    printf("press any key to continue...");
+                    fflush(stdout);
+                    waitKey();
+                    printf("\n");
+                }
+            }
         }
-        if (img2.empty())
-        {
-            printf("Command-line parameter error: could not load the second input image file\n");
-            return -1;
-        }
-
-        Size img_size = img1.size();
-        numberOfDisparities = numberOfDisparities > 0 ? numberOfDisparities : ((img_size.width/8) + 15) & -16;
-        sgbm->setNumDisparities(numberOfDisparities);
-        int cn = img1.channels();
-        sgbm->setP1(8*cn*sgbmWinSize*sgbmWinSize);
-        sgbm->setP2(32*cn*sgbmWinSize*sgbmWinSize);
-        if( !remap_filename.empty() )
-        {
-
-        Mat img1r, img2r;
-        int64 rect_time = getTickCount();
-        remap(img1, img1r, map11, map12, INTER_LINEAR);
-        remap(img2, img2r, map21, map22, INTER_LINEAR);
-        rect_time = getTickCount() - rect_time;
-        printf("Rectification Time elapsed: %fms\n", rect_time*1000/getTickFrequency());
-        img1 = img1r;
-        img2 = img2r;
-        }
-
-            
-        Ptr<DisparityWLSFilter> wls_filter;
-        wls_filter = createDisparityWLSFilter(sgbm);
-        Ptr<StereoMatcher> right_matcher = createRightMatcher(sgbm);   
-
-        Mat left_disp, right_disp, filtered_disp, disp8;
-        int64 disp_time = getTickCount();
-
-        sgbm->compute(img1, img2, left_disp);
-        right_matcher->compute(img2, img1, right_disp);
-
-        disp_time = getTickCount() - disp_time;
-        printf("Disparity matching Time elapsed: %fms\n", disp_time*1000/getTickFrequency());
-        
-        wls_filter->setLambda(8000);
-        wls_filter->setSigmaColor(1.5);
-        int64 filtering_time = getTickCount();
-        wls_filter->filter(left_disp,img1,filtered_disp,right_disp);
-        filtering_time = (getTickCount() - filtering_time);
-        printf("Filtering Time elapsed: %fms\n", filtering_time*1000/getTickFrequency());
-        filtered_disp.convertTo(disp8, CV_8U, 255/(numberOfDisparities*16.));
-        imwrite(op_filename, disp8);
-
-        if( !no_display )
-        {
-            namedWindow("left", 1);
-            imshow("left", img1);
-            namedWindow("right", 1);
-            imshow("right", img2);
-            namedWindow("disparity", 0);
-            imshow("disparity", disp8);
-            printf("press any key to continue...");
-            fflush(stdout);
-            waitKey();
-            printf("\n");
-        }
-	}
+    }
     return 0;
 }
